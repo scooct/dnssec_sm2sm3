@@ -1,0 +1,202 @@
+--- dnssec.py	2022-03-07 07:22:16.667302400 +0800
++++ dnssec_new.py	2023-04-10 09:43:07.212993452 +0800
+@@ -31,6 +31,8 @@
+ import dns.rdatatype
+ import dns.rdataclass
+ 
++from gmssl import sm3, func
++
+ 
+ class UnsupportedAlgorithm(dns.exception.DNSException):
+     """The DNSSEC algorithm is not supported."""
+@@ -58,6 +60,7 @@
+     INDIRECT = 252
+     PRIVATEDNS = 253
+     PRIVATEOID = 254
++    SM2SM3 = 17
+ 
+     @classmethod
+     def _maximum(cls):
+@@ -107,12 +110,25 @@
+         total += ((total >> 16) & 0xffff)
+         return total & 0xffff
+ 
++
++class sm3hash:
++  def __init__(self):
++    self.data = b''
++
++  def update(self, stuff):
++    self.data = self.data + stuff
++
++  def digest(self):
++    hash = sm3.sm3_hash(func.bytes_to_list(self.data))
++    return bytes.fromhex(hash)
++
+ class DSDigest(dns.enum.IntEnum):
+     """DNSSEC Delegation Signer Digest Algorithm"""
+ 
+     SHA1 = 1
+     SHA256 = 2
+     SHA384 = 4
++    SM3 = 5
+ 
+     @classmethod
+     def _maximum(cls):
+@@ -150,6 +166,8 @@
+         dshash = hashlib.sha256()
+     elif algorithm == DSDigest.SHA384:
+         dshash = hashlib.sha384()
++    elif algorithm == DSDigest.SM3:
++        dshash = sm3hash()
+     else:
+         raise UnsupportedAlgorithm('unsupported algorithm "%s"' % algorithm)
+ 
+@@ -483,6 +501,129 @@
+     raise ValidationFailure("no RRSIGs validated")
+ 
+ 
++def _extract_data_sig(rrset, rrsig, keys, origin=None, now=None):
++    if isinstance(origin, str):
++        origin = dns.name.from_text(origin, dns.name.root)
++
++    # For convenience, allow the rrset to be specified as a (name,
++    # rdataset) tuple as well as a proper rrset
++    if isinstance(rrset, tuple):
++        rrname = rrset[0]
++        rdataset = rrset[1]
++    else:
++        rrname = rrset.name
++        rdataset = rrset
++
++    if now is None:
++        now = time.time()
++    if rrsig.expiration < now:
++        raise ValidationFailure('expired')
++    if rrsig.inception > now:
++        raise ValidationFailure('not yet valid')
++
++    if _is_dsa(rrsig.algorithm):
++        sig_r = rrsig.signature[1:21]
++        sig_s = rrsig.signature[21:]
++        sig = utils.encode_dss_signature(_bytes_to_long(sig_r),
++                                         _bytes_to_long(sig_s))
++    elif _is_ecdsa(rrsig.algorithm):
++        if rrsig.algorithm == Algorithm.ECDSAP256SHA256:
++            octets = 32
++        else:
++            octets = 48
++        sig_r = rrsig.signature[0:octets]
++        sig_s = rrsig.signature[octets:]
++        sig = utils.encode_dss_signature(_bytes_to_long(sig_r),
++                                         _bytes_to_long(sig_s))
++    #elif _is_sm2sm3(rrsig.algorithm):
++    #    octets = 32
++    #    sig_r = rrsig.signature[0:octets]
++    #    sig_s = rrsig.signature[octets:]
++    #    sig = utils.encode_dss_signature(_bytes_to_long(sig_r),
++    #                                     _bytes_to_long(sig_s))
++    else:
++        sig = rrsig.signature
++
++    data = b''
++    data += rrsig.to_wire(origin=origin)[:18]
++    data += rrsig.signer.to_digestable(origin)
++
++    # Derelativize the name before considering labels.
++    rrname = rrname.derelativize(origin)
++
++    if len(rrname) - 1 < rrsig.labels:
++        raise ValidationFailure('owner name longer than RRSIG labels')
++    elif rrsig.labels < len(rrname) - 1:
++        suffix = rrname.split(rrsig.labels + 1)[1]
++        rrname = dns.name.from_text('*', suffix)
++    rrnamebuf = rrname.to_digestable()
++    rrfixed = struct.pack('!HHI', rdataset.rdtype, rdataset.rdclass,
++                          rrsig.original_ttl)
++    rdatas = [rdata.to_digestable(origin) for rdata in rdataset]
++    for rdata in sorted(rdatas):
++        data += rrnamebuf
++        data += rrfixed
++        rrlen = struct.pack('!H', len(rdata))
++        data += rrlen
++        data += rdata
++
++    return ( data, sig )
++
++
++def _extract_validation_info(rrset, rrsig, keys, origin=None, now=None):
++    '''
++    _validate + 
++    '''
++    if isinstance(origin, str):
++        origin = dns.name.from_text(origin, dns.name.root)
++
++    if isinstance(rrset, tuple):
++        rrname = rrset[0]
++    else:
++        rrname = rrset.name
++
++    candidate_keys = _find_candidate_keys(keys, rrsig)
++    if candidate_keys is None:
++        raise ValidationFailure('unknown key')
++
++    for candidate_key in candidate_keys:
++        try:
++            (data, sig) = _extract_data_sig(rrset, rrsig, candidate_key, origin, now)
++            return (data, sig, candidate_key)
++        except (ValidationFailure, UnsupportedAlgorithm):
++            pass
++    raise ValidationFailure("no RRSIGs validated") #20221103
++
++def _extract_unsigned_data(rrset, key_tag, original_ttl, origin=None): # added on 20230315
++    if isinstance(origin, str):
++        origin = dns.name.from_text(origin, dns.name.root)
++
++    # For convenience, allow the rrset to be specified as a (name,
++    # rdataset) tuple as well as a proper rrset
++    if isinstance(rrset, tuple):
++        rrname = rrset[0]
++        rdataset = rrset[1]
++    else:
++        rrname = rrset.name
++        rdataset = rrset
++
++    data = b''
++    # Derelativize the name before considering labels.
++    rrname = rrname.derelativize(origin)
++
++    rrnamebuf = rrname.to_digestable()
++    rrfixed = struct.pack('!HHI', rdataset.rdtype, rdataset.rdclass,
++                          original_ttl)
++    rdatas = [rdata.to_digestable(origin) for rdata in rdataset]
++    for rdata in sorted(rdatas):
++        data += rrnamebuf
++        data += rrfixed
++        rrlen = struct.pack('!H', len(rdata))
++        data += rrlen
++        data += rdata
++
++    return ( data )
++
+ class NSEC3Hash(dns.enum.IntEnum):
+     """NSEC3 hash algorithm"""
+ 
+@@ -571,6 +712,10 @@
+     validate_rrsig = _validate_rrsig    # type: ignore
+     _have_pyca = True
+ 
++extract_validation_info = _extract_validation_info #20230322
++extract_data_sig = _extract_data_sig #20230322
++extract_unsigned_data = _extract_unsigned_data #20230322
++
+ ### BEGIN generated Algorithm constants
+ 
+ RSAMD5 = Algorithm.RSAMD5
+@@ -590,5 +735,6 @@
+ INDIRECT = Algorithm.INDIRECT
+ PRIVATEDNS = Algorithm.PRIVATEDNS
+ PRIVATEOID = Algorithm.PRIVATEOID
++SM2SM3 = Algorithm.SM2SM3
+ 
+ ### END generated Algorithm constants

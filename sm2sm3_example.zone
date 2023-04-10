@@ -1,0 +1,15 @@
+; File written on Fri Sep 23 10:32:40 2022
+; dnssec_signzone version 9.14.5
+example. 3600  IN   SOA    ns1.example. root.example. (
+                    1          ; serial
+                    3600       ; refresh (1 hour)
+                    300        ; retry (5 minutes)
+                    3600000    ; expire (5 weeks 6 days 16 hours)
+                    3600       ; minimum (1 hour)
+                    )
+            NS      ns1.example.
+            NS      ns2.example.
+ns2.example.   A    192.0.2.2
+ns1.example.   A    192.0.2.1
+www.example.   A    192.0.2.3
+test.example.  A    192.0.2.4
