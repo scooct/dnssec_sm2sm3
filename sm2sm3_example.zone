@@ -13,3 +13,13 @@ ns2.example.   A    192.0.2.2
 ns1.example.   A    192.0.2.1
 www.example.   A    192.0.2.3
 test.example.  A    192.0.2.4
+; This is a key-signing key, keyid 6400, for example.
+; Created: Mon Apr 10 16:23:42 2023 (20230410162342)
+; Publish: Mon Apr 10 16:23:42 2023 (20230410162342)
+; Activate: Mon Apr 10 16:23:42 2023 (20230410162342)
+example. IN DNSKEY 257 3 17 lBi+I6fwfqN2HxBQfTQL5QUiCGRE2qAL4hklq5RcXhOLR3XnwJ29qKO9tTOzZPtKxpqBZboRccvF5Ub/5QuzDg==
+; This is a zone-signing key, keyid 62449, for example.
+; Created: Mon Apr 10 16:23:43 2023 (20230410162343)
+; Publish: Mon Apr 10 16:23:43 2023 (20230410162343)
+; Activate: Mon Apr 10 16:23:43 2023 (20230410162343)
+example. IN DNSKEY 256 3 17 Lg9ZP99HHGSbDhniu8IChkZEemYFyQMTpYFdctimyaw/Nu0fcR0BmHX+qE5mZNE9Jqi1O3cMaaRuykGLfGmsjw==
