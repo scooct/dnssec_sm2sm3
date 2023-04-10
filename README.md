@@ -13,8 +13,8 @@ sign and validate dnssec signature with sm2sm3 algorithm
     python3 dsfromkey.py keys/Kexample.+017+56565.key
     cat keys/Kexample.+017+56565.key keys/Kexample.+017+21907.key >> ${UNSIGNED}
     python3 signzone.py -e 20240401000000 -s 20230401000000 -o example -f ${UNSIGNED} -k keys/Kexample.+017+56565 -z keys/Kexample.+017+21907
-    python3 verifyzone.py -o example -f sm2sm3_example.zone.signed.wrong.1
-    python3 verifyzone.py -o example -f ${UNSIGNED}.signed
+    python3 validatezone.py -o example -f sm2sm3_example.zone.signed.wrong.1
+    python3 validatezone.py -o example -f ${UNSIGNED}.signed
 
 ## Notation
 In order to support SM2SM3 algorithm, the file dnssec.py of dnspython was modified accordingly. The patch file could be found in deps/dnssec.py.patch<br>
