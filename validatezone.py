@@ -1,4 +1,4 @@
-# Copyright (c) 202 Cathy Zhang scooct@163.com 
+# Copyright (c) 2023 Cathy Zhang scooct@163.com 
 
 # Permission is hereby granted, free of charge, to any person obtaining 
 # a copy of this software and associated documentation files (the "Software"), 
@@ -58,7 +58,7 @@ nodes=zone.nodes
 lastRRdataset=None
 currentRRdataset=None
 
-prefix="           ---- verify result is:"
+prefix="           ---- validation result is:"
 for key in nodes:
   rdatasets=zone.nodes[key]
   for RRdataset in rdatasets:
@@ -73,9 +73,9 @@ for key in nodes:
             (data, sig, pubkey) = dns.dnssec.extract_validation_info( (key, lastRRdataset), Rdata, zone.nodes, zone.origin )
             sm2_crypt = sm2.CryptSM2(private_key=None,
                         public_key=pubkey.key.hex())
-            verify_result=sm2_crypt.verify_with_sm3(str(sig.hex()), data)
+            validation_result=sm2_crypt.verify_with_sm3(str(sig.hex()), data)
             keytag = dns.dnssec.key_id(pubkey)
-            if verify_result:
+            if validation_result:
               print( "[ %s ] RRset of [ %s ] could be verified with DNSKEY(keyid [ %d] )." % (dns.rdatatype.to_text(lastRRdataset.rdtype), ownername, keytag) )
             else:
               print( "[ %s ] RRset of [ %s ] could NOT be verified with DNSKEY(keyid [ %d] )." % (dns.rdatatype.to_text(lastRRdataset.rdtype), ownername, keytag) )
